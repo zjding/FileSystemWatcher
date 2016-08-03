@@ -37,7 +37,7 @@ namespace FileChangeNotifier
                 m_Watcher.Dispose();
                 btnWatchFile.BackColor = Color.LightSkyBlue;
                 btnWatchFile.Text = "Start Watching";
-                
+
             }
             else
             {
@@ -76,23 +76,26 @@ namespace FileChangeNotifier
         {
             //if (!m_bDirty)
             //{
-                m_Sb.Remove(0, m_Sb.Length);
-                m_Sb.Append(e.FullPath);
-                m_Sb.Append(" ");
-                m_Sb.Append(e.ChangeType.ToString());
-                m_Sb.Append("    ");
-                m_Sb.Append(DateTime.Now.ToString());
-                m_bDirty = true;
+            m_Sb.Remove(0, m_Sb.Length);
+            m_Sb.Append(e.FullPath);
+            m_Sb.Append(" ");
+            m_Sb.Append(e.ChangeType.ToString());
+            m_Sb.Append("    ");
+            m_Sb.Append(DateTime.Now.ToString());
+            m_bDirty = true;
 
-                if (e.ChangeType == WatcherChangeTypes.Created)
+            if (e.ChangeType == WatcherChangeTypes.Created)
+            {
+                string name = e.Name;
+
+                if (name.Split('\\').Length == 3)
                 {
-                    string name = e.Name;
-                    string folder = name.Split('\\')[0];
-                    string filename = name.Split('\\')[1];
+                    string folder = name.Split('\\')[1];
+                    string filename = name.Split('\\')[2];
 
                     filename = filename.Substring(0, filename.LastIndexOf('.'));
 
-                    if (filename.Split('-').Length == 3)
+                    if (filename.Split('-').Length == 4 || filename.Split('-').Length == 3)
                     {
                         SqlConnection cn = new SqlConnection(connectionString);
                         SqlCommand cmd = new SqlCommand();
@@ -107,51 +110,63 @@ namespace FileChangeNotifier
                         string day = date.Substring(6, 2);
                         date = month + "/" + day + "/" + year;
                         string amount = filename.Split('-')[1];
-                        string note = filename.Split('-')[2];
+                        string categoryCode = filename.Split('-')[2];
 
-                        sqlString = "INSERT INTO eBay_BookKeeping (TransactionDate, Amount, Note, Receipt, Gain) VALUES ('" +
-                                    date + "', " + amount + ", '" + note + "', '" + filename + "', " + (folder == "Cost" ? "0" : "1") + ")";
+                        string transactionName = string.Empty;
+                        if (filename.Split('-').Length == 4)
+                            transactionName = filename.Split('-')[3];
+
+                        sqlString = @"INSERT INTO BookKeeping (Date, Name, CategoryCode, Amount, Receipt, Expense) 
+                                      VALUES (@_Date, @_Name, @_CategoryCode, @_Amount, @_Receipt, @_Expense)";
 
                         cmd.CommandText = sqlString;
+                        cmd.Parameters.AddWithValue("@_Date", date);
+                        cmd.Parameters.AddWithValue("@_Name", transactionName);
+                        cmd.Parameters.AddWithValue("@_CategoryCode", categoryCode);
+                        cmd.Parameters.AddWithValue("@_Amount", amount);
+                        cmd.Parameters.AddWithValue("@_Receipt", filename);
+                        cmd.Parameters.AddWithValue("@_Expense", folder == "Cost" ? "0" : "1");
+
                         cmd.ExecuteNonQuery();
 
                         cn.Close();
                     }
                 }
-                else if (e.ChangeType == WatcherChangeTypes.Deleted)
+            }
+            else if (e.ChangeType == WatcherChangeTypes.Deleted)
+            {
+                string name = e.Name;
+                string folder = name.Split('\\')[0];
+                string filename = name.Split('\\')[1];
+
+                filename = filename.Substring(0, filename.LastIndexOf('.'));
+
+                if (filename.Split('-').Length == 3)
                 {
-                    string name = e.Name;
-                    string folder = name.Split('\\')[0];
-                    string filename = name.Split('\\')[1];
+                    SqlConnection cn = new SqlConnection(connectionString);
+                    SqlCommand cmd = new SqlCommand();
+                    cmd.Connection = cn;
+                    cn.Open();
 
-                    filename = filename.Substring(0, filename.LastIndexOf('.'));
+                    string sqlString;
 
-                    if (filename.Split('-').Length == 3)
-                    {
-                        SqlConnection cn = new SqlConnection(connectionString);
-                        SqlCommand cmd = new SqlCommand();
-                        cmd.Connection = cn;
-                        cn.Open();
+                    string date = filename.Split('-')[0];
+                    string year = date.Substring(0, 4);
+                    string month = date.Substring(4, 2);
+                    string day = date.Substring(6, 2);
+                    date = month + "/" + day + "/" + year;
+                    string amount = filename.Split('-')[1];
+                    string note = filename.Split('-')[2];
 
-                        string sqlString;
+                    sqlString = "DELETE FROM eBay_BookKeeping WHERE TransactionDate = '" + date + "' AND Amount = " +
+                                amount + " AND Note = '" + note + "' AND Receipt = '" + filename + "' AND Gain = " + (folder == "Cost" ? "0" : "1");
 
-                        string date = filename.Split('-')[0];
-                        string year = date.Substring(0, 4);
-                        string month = date.Substring(4, 2);
-                        string day = date.Substring(6, 2);
-                        date = month + "/" + day + "/" + year;
-                        string amount = filename.Split('-')[1];
-                        string note = filename.Split('-')[2];
+                    cmd.CommandText = sqlString;
+                    cmd.ExecuteNonQuery();
 
-                        sqlString = "DELETE FROM eBay_BookKeeping WHERE TransactionDate = '" + date + "' AND Amount = " +
-                                    amount + " AND Note = '" + note + "' AND Receipt = '" + filename + "' AND Gain = " + (folder == "Cost" ? "0" : "1");
-
-                        cmd.CommandText = sqlString;
-                        cmd.ExecuteNonQuery();
-
-                        cn.Close();
-                    }
+                    cn.Close();
                 }
+            }
             //}
         }
 
@@ -159,56 +174,56 @@ namespace FileChangeNotifier
         {
             //if (!m_bDirty)
             //{
-                m_Sb.Remove(0, m_Sb.Length);
-                m_Sb.Append(e.OldFullPath);
-                m_Sb.Append(" ");
-                m_Sb.Append(e.ChangeType.ToString());
-                m_Sb.Append(" ");
-                m_Sb.Append("to ");
-                m_Sb.Append(e.Name);
-                m_Sb.Append("    ");
-                m_Sb.Append(DateTime.Now.ToString());
-                m_bDirty = true;
-                if (rdbFile.Checked)
-                {
-                    m_Watcher.Filter = e.Name;
-                    m_Watcher.Path = e.FullPath.Substring(0, e.FullPath.Length - m_Watcher.Filter.Length);
-                }
+            m_Sb.Remove(0, m_Sb.Length);
+            m_Sb.Append(e.OldFullPath);
+            m_Sb.Append(" ");
+            m_Sb.Append(e.ChangeType.ToString());
+            m_Sb.Append(" ");
+            m_Sb.Append("to ");
+            m_Sb.Append(e.Name);
+            m_Sb.Append("    ");
+            m_Sb.Append(DateTime.Now.ToString());
+            m_bDirty = true;
+            if (rdbFile.Checked)
+            {
+                m_Watcher.Filter = e.Name;
+                m_Watcher.Path = e.FullPath.Substring(0, e.FullPath.Length - m_Watcher.Filter.Length);
+            }
 
-                string oldName = e.OldName;
-                string oldFolder = oldName.Split('\\')[0];
-                string oldFilename = oldName.Split('\\')[1];
-                oldFilename = oldFilename.Substring(0, oldFilename.LastIndexOf('.'));
+            string oldName = e.OldName;
+            string oldFolder = oldName.Split('\\')[0];
+            string oldFilename = oldName.Split('\\')[1];
+            oldFilename = oldFilename.Substring(0, oldFilename.LastIndexOf('.'));
 
-                string newName = e.Name;
-                string newFolder = newName.Split('\\')[0];
-                string newFilename = newName.Split('\\')[1];
-                newFilename = newFilename.Substring(0, newFilename.LastIndexOf('.'));
+            string newName = e.Name;
+            string newFolder = newName.Split('\\')[0];
+            string newFilename = newName.Split('\\')[1];
+            newFilename = newFilename.Substring(0, newFilename.LastIndexOf('.'));
 
-                if (oldFilename.Split('-').Length == 3 && newFilename.Split('-').Length == 3)
-                {
-                    string oldDate = oldFilename.Split('-')[0];
-                    string oldYear = oldDate.Substring(0, 4);
-                    string oldMonth = oldDate.Substring(4, 2);
-                    string oldDay = oldDate.Substring(6, 2);
-                    oldDate = oldMonth + "/" + oldDay + "/" + oldYear;
-                    string oldAmount = oldFilename.Split('-')[1];
-                    string oldNote = oldFilename.Split('-')[2];
+            if (oldFilename.Split('-').Length == 3 && newFilename.Split('-').Length == 3)
+            {
+                string oldDate = oldFilename.Split('-')[0];
+                string oldYear = oldDate.Substring(0, 4);
+                string oldMonth = oldDate.Substring(4, 2);
+                string oldDay = oldDate.Substring(6, 2);
+                oldDate = oldMonth + "/" + oldDay + "/" + oldYear;
+                string oldAmount = oldFilename.Split('-')[1];
+                string oldNote = oldFilename.Split('-')[2];
 
-                    string newDate = newFilename.Split('-')[0];
-                    string newYear = newDate.Substring(0, 4);
-                    string newMonth = newDate.Substring(4, 2);
-                    string newDay = newDate.Substring(6, 2);
-                    newDate = newMonth + "/" + newDay + "/" + newYear;
-                    string newAmount = newFilename.Split('-')[1];
-                    string newNote = newFilename.Split('-')[2];
+                string newDate = newFilename.Split('-')[0];
+                string newYear = newDate.Substring(0, 4);
+                string newMonth = newDate.Substring(4, 2);
+                string newDay = newDate.Substring(6, 2);
+                newDate = newMonth + "/" + newDay + "/" + newYear;
+                string newAmount = newFilename.Split('-')[1];
+                string newNote = newFilename.Split('-')[2];
 
-                    SqlConnection cn = new SqlConnection(connectionString);
-                    SqlCommand cmd = new SqlCommand();
-                    cmd.Connection = cn;
-                    cn.Open();
+                SqlConnection cn = new SqlConnection(connectionString);
+                SqlCommand cmd = new SqlCommand();
+                cmd.Connection = cn;
+                cn.Open();
 
-                    string sqlString = @"UPDATE eBay_BookKeeping 
+                string sqlString = @"UPDATE eBay_BookKeeping 
                                         SET TransactionDate = @_newTransactionDate, 
                                             Amount = @_newAmount, 
                                             Note = @_newNote,
@@ -218,21 +233,21 @@ namespace FileChangeNotifier
                                         AND Note = @_oldNote
                                         AND Receipt = @_oldReceipt";
 
-                    cmd.CommandText = sqlString;
+                cmd.CommandText = sqlString;
 
-                    cmd.Parameters.AddWithValue("@_newTransactionDate", newDate);
-                    cmd.Parameters.AddWithValue("@_newAmount", newAmount);
-                    cmd.Parameters.AddWithValue("@_newNote", newNote);
-                    cmd.Parameters.AddWithValue("@_newReceipt", newFilename);
-                    cmd.Parameters.AddWithValue("@_oldTransactionDate", oldDate);
-                    cmd.Parameters.AddWithValue("@_oldAmount", oldAmount);
-                    cmd.Parameters.AddWithValue("@_oldNote", oldNote);
-                    cmd.Parameters.AddWithValue("@_oldReceipt", oldFilename);
+                cmd.Parameters.AddWithValue("@_newTransactionDate", newDate);
+                cmd.Parameters.AddWithValue("@_newAmount", newAmount);
+                cmd.Parameters.AddWithValue("@_newNote", newNote);
+                cmd.Parameters.AddWithValue("@_newReceipt", newFilename);
+                cmd.Parameters.AddWithValue("@_oldTransactionDate", oldDate);
+                cmd.Parameters.AddWithValue("@_oldAmount", oldAmount);
+                cmd.Parameters.AddWithValue("@_oldNote", oldNote);
+                cmd.Parameters.AddWithValue("@_oldReceipt", oldFilename);
 
-                    cmd.ExecuteNonQuery();
+                cmd.ExecuteNonQuery();
 
-                    cn.Close();
-                }
+                cn.Close();
+            }
             //}            
         }
 
